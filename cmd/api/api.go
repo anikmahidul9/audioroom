@@ -5,16 +5,27 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/anikmahidul9/voiceroom/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
 type application struct {
 	config config
+	store  store.Storage
+	
+}
+
+type dbConfig struct {
+	addr	 string
+	maxOpenConns int
+	maxIdleConns int
+	maxIdleTime  string
 }
 
 type config struct {
 	addr string
+	db     dbConfig
 }
 
 func (app *application) mount() *chi.Mux {
