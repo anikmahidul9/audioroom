@@ -13,11 +13,10 @@ import (
 type application struct {
 	config config
 	store  store.Storage
-	
 }
 
 type dbConfig struct {
-	addr	 string
+	addr         string
 	maxOpenConns int
 	maxIdleConns int
 	maxIdleTime  string
@@ -25,7 +24,8 @@ type dbConfig struct {
 
 type config struct {
 	addr string
-	db     dbConfig
+	db   dbConfig
+	env  string
 }
 
 func (app *application) mount() *chi.Mux {
@@ -37,6 +37,20 @@ func (app *application) mount() *chi.Mux {
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Get("/health", app.healthCheckHandler)
+		r.Route("/events", func(r chi.Router) {
+			// Base path: /v1/events
+			r.Post("/", app.createEventHandler)
+			r.Get("/", app.feedEventHandler)
+
+			// Path: /v1/events/{id}
+			r.Get("/{id}", app.getEventHandler)
+
+			// Path: /v1/events/{id}/start
+			r.Post("/{id}/start", app.startEventHandler)
+
+			// Path: /v1/events/{id}/end
+			r.Post("/{id}/end", app.endEventHandler)
+		})
 	})
 
 	return r
