@@ -50,6 +50,10 @@ func (app *application) mount() *chi.Mux {
 
 			// Path: /v1/events/{id}/end
 			r.Post("/{id}/end", app.endEventHandler)
+			r.Post("/join", app.joinEventHandler)
+			r.Post("/leave", app.leaveEventHandler)
+			r.Get("/members", app.listMembersHandler)
+			r.Patch("/members/{userID}/role", app.updateMemberRoleHandler)
 		})
 	})
 
