@@ -32,33 +32,51 @@ func (app *application) mount() *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-
 	r.Use(middleware.Timeout(time.Second * 60))
 
 	r.Route("/v1", func(r chi.Router) {
+		// ==========================================
+		// 1. PUBLIC ROUTES (Auth ছাড়া অ্যাক্সেস করা যাবে)
+		// ==========================================
 		r.Get("/health", app.healthCheckHandler)
-		r.Route("/events", func(r chi.Router) {
-			// Base path: /v1/events
-			r.Post("/", app.createEventHandler)
-			r.Get("/", app.feedEventHandler)
+		r.Post("/auth/register", app.registerHandler) // Auth রাউট
+		r.Post("/auth/login", app.loginHandler)       // Auth রাউট
 
-			// Path: /v1/events/{id}
-			r.Get("/{id}", app.getEventHandler)
+		// ==========================================
+		// 2. PROTECTED ROUTES (Auth Required)
+		// ==========================================
+		r.Group(func(r chi.Router) {
+			r.Use(app.authMiddleware) // <-- Auth মিডলওয়্যার এখানে যোগ হলো
 
-			// Path: /v1/events/{id}/start
-			r.Post("/{id}/start", app.startEventHandler)
+			r.Get("/me", func(w http.ResponseWriter, r *http.Request) {
+				userID := r.Context().Value("userID").(string)
+				app.jsonResponse(w, http.StatusOK, map[string]string{"userID": userID})
+			})
 
-			// Path: /v1/events/{id}/end
-			r.Post("/{id}/end", app.endEventHandler)
-			r.Post("/join", app.joinEventHandler)
-			r.Post("/leave", app.leaveEventHandler)
-			r.Get("/members", app.listMembersHandler)
-			r.Patch("/members/{userID}/role", app.updateMemberRoleHandler)
+			r.Route("/events", func(r chi.Router) {
+				r.Post("/", app.createEventHandler)
+				r.Get("/", app.feedEventHandler)
+
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", app.getEventHandler)
+					r.Post("/start", app.startEventHandler)
+					r.Post("/end", app.endEventHandler)
+
+					r.Post("/join", app.joinRoomHandler)
+					r.Post("/leave", app.leaveEventHandler)
+					r.Get("/members", app.listMembersHandler)
+					r.Patch("/members/{userID}/role", app.updateMemberRoleHandler)
+
+					r.Post("/mute-all", app.muteAllSpeakersHandler)
+					r.Post("/unmute-all", app.unmuteAllSpeakersHandler)
+					r.Post("/members/{userID}/mute", app.forceMuteHandler)
+					r.Post("/members/{userID}/kick", app.kickParticipantHandler)
+				})
+			})
 		})
 	})
 
 	return r
-
 }
 func (app *application) run(mux *chi.Mux) error {
 	srv := &http.Server{

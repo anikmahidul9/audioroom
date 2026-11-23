@@ -127,3 +127,42 @@ func scanEvent(sc scanner) (*Event, error) {
 	}
 	return e, nil
 }
+
+func (s *EventStore) CheckEventAccess(ctx context.Context, eventID, userID uuid.UUID) (bool, error) {
+	ev, err := s.GetByID(ctx, eventID)
+	if err != nil {
+		return false, err
+	}
+	if ev.Visibility == "public" {
+		return true, nil
+	}
+
+	if ev.HostID == userID {
+		return true, nil
+	}
+
+	var isMember bool
+	err = s.db.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM event_members 
+			WHERE event_id = $1 AND user_id = $2 AND status = 'active'
+		)`, eventID, userID).Scan(&isMember)
+	if err != nil {
+		return false, err
+	}
+	if isMember {
+		return true, nil
+	}
+
+	var isInvited bool
+	err = s.db.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM event_invitations 
+			WHERE event_id = $1 AND invitee_id = $2 AND status = 'accepted'
+		)`, eventID, userID).Scan(&isInvited)
+	if err != nil {
+		return false, err
+	}
+
+	return isInvited, nil
+}

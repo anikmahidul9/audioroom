@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,11 +10,12 @@ import (
 	"github.com/anikmahidul9/voiceroom/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/livekit/protocol/livekit"
 )
 
 // 1. Create Event
 func (app *application) createEventHandler(w http.ResponseWriter, r *http.Request) {
-	userIDStr := "11111111-1111-1111-1111-111111111111" //r.Context().Value("userID").(string)
+	userIDStr := r.Context().Value("userID").(string)
 	hostID, _ := uuid.Parse(userIDStr)
 
 	var input struct {
@@ -64,6 +66,8 @@ func (app *application) createEventHandler(w http.ResponseWriter, r *http.Reques
 		app.internalServerErrorResponse(w, r, err)
 		return
 	}
+
+	app.store.Members.Join(r.Context(), createdEvent.ID, hostID, "host")
 
 	app.jsonResponse(w, http.StatusCreated, createdEvent)
 }
@@ -119,12 +123,28 @@ func (app *application) startEventHandler(w http.ResponseWriter, r *http.Request
 
 // 5. End Event
 func (app *application) endEventHandler(w http.ResponseWriter, r *http.Request) {
-	app.changeEventStatus(w, r, "ended")
+	hostID, _ := uuid.Parse(r.Context().Value("userID").(string))
+	evID, _ := uuid.Parse(chi.URLParam(r, "id"))
+
+	ev, err := app.store.Events.GetByID(r.Context(), evID)
+	if err != nil || ev.HostID != hostID {
+		app.forbiddenResponse(w, r)
+		return
+	}
+
+	app.store.Events.UpdateStatus(r.Context(), evID, "ended")
+
+	roomClient := getRoomClient()
+	roomClient.DeleteRoom(context.Background(), &livekit.DeleteRoomRequest{
+		Room: ev.RoomName,
+	})
+
+	app.jsonResponse(w, http.StatusOK, map[string]string{"message": "event ended and room closed"})
 }
 
 // Helper for Start/End
 func (app *application) changeEventStatus(w http.ResponseWriter, r *http.Request, status string) {
-	userIDStr := "11111111-1111-1111-1111-111111111111" //r.Context().Value("userID").(string)
+	userIDStr := r.Context().Value("userID").(string)
 	userID, _ := uuid.Parse(userIDStr)
 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))

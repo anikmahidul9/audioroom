@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -78,4 +80,38 @@ func (s *EventMemberStore) ListActive(ctx context.Context, eventID uuid.UUID) ([
 		return nil, err
 	}
 	return members, nil
+}
+
+func (s *EventMemberStore) GetMemberRole(ctx context.Context, eventID, userID uuid.UUID) (string, string, error) {
+	const query = `
+		SELECT m.role, u.name 
+		FROM event_members m
+		JOIN users u ON u.id = m.user_id
+		WHERE m.event_id = $1 AND m.user_id = $2 AND m.status = 'active'
+	`
+	var role, name string
+	err := s.db.QueryRowContext(ctx, query, eventID, userID).Scan(&role, &name)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", fmt.Errorf("user is not an active member of this event")
+		}
+		return "", "", err
+	}
+	return role, name, nil
+}
+
+func (s *EventMemberStore) MuteAllSpeakers(ctx context.Context, eventID uuid.UUID) error {
+	const query = `UPDATE event_members SET role = 'listener' WHERE event_id = $1 AND role = 'speaker'`
+	_, err := s.db.ExecContext(ctx, query, eventID)
+	return err
+}
+
+func (s *EventMemberStore) UnmuteAllSpeakers(ctx context.Context, eventID uuid.UUID) error {
+	const query = `
+		UPDATE event_members 
+		SET role = 'speaker' 
+		WHERE event_id = $1 AND role = 'listener' AND status = 'active'
+	`
+	_, err := s.db.ExecContext(ctx, query, eventID)
+	return err
 }
